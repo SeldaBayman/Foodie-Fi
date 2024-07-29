@@ -1,0 +1,127 @@
+C. Challenge Payment Question
+
+The Foodie-Fi team wants you to create a new payments table for the year 2020 that includes amounts paid by each customer in the subscriptions table with the following requirements:
+monthly payments always occur on the same day of month as the original start_date of any monthly paid plan
+upgrades from basic to monthly or pro plans are reduced by the current paid amount in that month and start immediately
+upgrades from pro monthly to pro annual are paid at the end of the current billing period and also starts at the end of the month period
+once a customer churns they will no longer make payments
+
+To create a new payments table for the Foodie-Fi team that captures the specific requirements for customer payments in 2020, we'll use SQL. This process will involve creating the payments table, inserting records for monthly payments, handling upgrades and churns, and ensuring the correct dates and amounts are calculated.
+
+1. Create the Payments Table,
+First, let's create a table to store the payment records:
+
+CREATE TABLE payments (
+    payment_id SERIAL PRIMARY KEY,
+    customer_id INT,
+    payment_date DATE,
+    amount DECIMAL(10, 2)
+);
+
+2. Insert Monthly Payments
+Monthly payments should be added for each customer based on their subscription start date.
+
+-- Insert monthly payments for basic and pro plans
+INSERT INTO payments (customer_id, payment_date, amount)
+SELECT 
+    customer_id,
+    generate_series(start_date, '2020-12-31', INTERVAL '1 month')::date AS payment_date,
+    CASE 
+        WHEN plan_name = 'basic' THEN 9.99
+        WHEN plan_name = 'pro' THEN 19.99
+    END AS amount
+FROM subscriptions
+WHERE plan_name IN ('basic', 'pro')
+  AND EXTRACT(YEAR FROM start_date) <= 2020
+  AND (churn_date IS NULL OR churn_date > generate_series(start_date, '2020-12-31', INTERVAL '1 month')::date);
+
+3. Handle Upgrades
+For upgrades, we need to adjust the payment amounts and dates accordingly.
+
+Basic to Pro Monthly
+
+-- Update payments for basic to pro monthly upgrades
+UPDATE payments p
+SET amount = 19.99 - 9.99
+FROM subscriptions s
+WHERE p.customer_id = s.customer_id
+  AND s.plan_name = 'pro'
+  AND s.start_date = p.payment_date
+  AND EXTRACT(YEAR FROM s.start_date) = 2020
+  AND p.amount = 9.99;
+Pro Monthly to Pro Annual
+
+-- Add annual payment at the end of the billing period for pro monthly to pro annual upgrades
+INSERT INTO payments (customer_id, payment_date, amount)
+SELECT 
+    customer_id,
+    (start_date + INTERVAL '1 year')::date AS payment_date,
+    199.99
+FROM subscriptions
+WHERE plan_name = 'pro annual'
+  AND EXTRACT(YEAR FROM start_date) = 2020;
+
+4. Handle Churns
+Ensure no payments are made after a customer churns.
+
+-- Remove payments for customers who churned
+DELETE FROM payments
+USING subscriptions
+WHERE payments.customer_id = subscriptions.customer_id
+  AND subscriptions.plan_name = 'churned'
+  AND payments.payment_date > subscriptions.start_date;
+
+5. Final SQL Script
+Combine all steps into a final script for clarity and completeness.
+
+-- Create the payments table
+CREATE TABLE payments (
+    payment_id SERIAL PRIMARY KEY,
+    customer_id INT,
+    payment_date DATE,
+    amount DECIMAL(10, 2)
+);
+
+-- Insert monthly payments for basic and pro plans
+
+INSERT INTO payments (customer_id, payment_date, amount)
+SELECT 
+    customer_id,
+    generate_series(start_date, '2020-12-31', INTERVAL '1 month')::date AS payment_date,
+    CASE 
+        WHEN plan_name = 'basic' THEN 9.99
+        WHEN plan_name = 'pro' THEN 19.99
+    END AS amount
+FROM subscriptions
+WHERE plan_name IN ('basic', 'pro')
+  AND EXTRACT(YEAR FROM start_date) <= 2020
+  AND (churn_date IS NULL OR churn_date > generate_series(start_date, '2020-12-31', INTERVAL '1 month')::date);
+
+-- Update payments for basic to pro monthly upgrades
+
+UPDATE payments p
+SET amount = 19.99 - 9.99
+FROM subscriptions s
+WHERE p.customer_id = s.customer_id
+  AND s.plan_name = 'pro'
+  AND s.start_date = p.payment_date
+  AND EXTRACT(YEAR FROM s.start_date) = 2020
+  AND p.amount = 9.99;
+
+-- Add annual payment at the end of the billing period for pro monthly to pro annual upgrades
+
+INSERT INTO payments (customer_id, payment_date, amount)
+SELECT 
+    customer_id,
+    (start_date + INTERVAL '1 year')::date AS payment_date,
+    199.99
+FROM subscriptions
+WHERE plan_name = 'pro annual'
+  AND EXTRACT(YEAR FROM start_date) = 2020;
+
+-- Remove payments for customers who churned
+DELETE FROM payments
+USING subscriptions
+WHERE payments.customer_id = subscriptions.customer_id
+  AND subscriptions.plan_name = 'churned'
+  AND payments.payment_date > subscriptions.start_date;
